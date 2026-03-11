@@ -2,14 +2,11 @@ import os
 import gradio as gr
 from IPython.display import display, HTML
 
-
-def launch_rag_ui(chat_fn, title="Simple RAG Demo", port=7860):
-
+def launch_rag_ui(chat_fn, title="Simple RAG Demo", port=7860, public_base_url="https://dmproject.myddns.me"):
     jupyterhub_user = os.environ.get("JUPYTERHUB_USER", "denis")
 
     with gr.Blocks() as demo:
         gr.Markdown(f"# {title}")
-
         chatbot = gr.Chatbot(height=400)
         msg = gr.Textbox(placeholder="Ask a question...")
         clear = gr.Button("Clear")
@@ -26,17 +23,13 @@ def launch_rag_ui(chat_fn, title="Simple RAG Demo", port=7860):
         prevent_thread_lock=True,
     )
 
-    service_prefix = os.environ.get(
-        "JUPYTERHUB_SERVICE_PREFIX",
-        f"/user/{jupyterhub_user}/"
-    )
-
-    public_url = f"https://dmproject.myddns.me{service_prefix}proxy/{port}/"
+    service_prefix = os.environ.get("JUPYTERHUB_SERVICE_PREFIX", f"/user/{jupyterhub_user}/")
+    public_url = f"{public_base_url}{service_prefix}proxy/{port}/"
 
     display(HTML(f"""
     <div style="margin-bottom:10px;">
-    <b>Open in new tab:</b>
-    <a href="{public_url}" target="_blank">{public_url}</a>
+      <b>Open in new tab:</b>
+      <a href="{public_url}" target="_blank">{public_url}</a>
     </div>
 
     <iframe
