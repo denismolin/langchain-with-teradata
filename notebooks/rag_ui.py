@@ -2,7 +2,13 @@ import os
 import gradio as gr
 from IPython.display import display, HTML
 
-def launch_rag_ui(chat_fn, title="Simple RAG Demo", port=7860, public_base_url="https://dmproject.myddns.me"):
+def launch_rag_ui(
+    chat_fn,
+    title="Simple RAG Demo",
+    port=7860,
+    public_base_url="https://dmproject.myddns.me",
+    show_sources=True,
+):
     jupyterhub_user = os.environ.get("JUPYTERHUB_USER", "denis")
 
     with gr.Blocks() as demo:
@@ -11,8 +17,44 @@ def launch_rag_ui(chat_fn, title="Simple RAG Demo", port=7860, public_base_url="
         msg = gr.Textbox(placeholder="Ask a question...")
         clear = gr.Button("Clear")
 
-        msg.submit(chat_fn, [msg, chatbot], [chatbot, msg])
-        clear.click(lambda: ([], ""), None, [chatbot, msg])
+        if show_sources:
+            with gr.Accordion("Retrieved sources", open=False):
+                sources = gr.Markdown("No sources yet.")
+
+        def _submit_wrapper(message, history):
+            result = chat_fn(message, history)
+
+            # Backward compatibility:
+            # old chat_fn -> (history, msg_value)
+            # new chat_fn -> (history, sources_md, msg_value)
+            if show_sources:
+                if isinstance(result, tuple):
+                    if len(result) == 3:
+                        return result
+                    elif len(result) == 2:
+                        history_out, msg_out = result
+                        return history_out, "No sources available.", msg_out
+
+                # very defensive fallback
+                return history, "No sources available.", ""
+
+            else:
+                # original behavior
+                if isinstance(result, tuple) and len(result) >= 2:
+                    return result[0], result[-1]
+
+                return history, ""
+
+        if show_sources:
+            msg.submit(_submit_wrapper, [msg, chatbot], [chatbot, sources, msg])
+            clear.click(
+                lambda: ([], "No sources yet.", ""),
+                None,
+                [chatbot, sources, msg]
+            )
+        else:
+            msg.submit(_submit_wrapper, [msg, chatbot], [chatbot, msg])
+            clear.click(lambda: ([], ""), None, [chatbot, msg])
 
     demo.launch(
         server_name="0.0.0.0",
