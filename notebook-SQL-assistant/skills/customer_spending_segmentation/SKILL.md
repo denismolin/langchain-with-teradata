@@ -1,15 +1,13 @@
 ---
 name: customer_spending_segmentation
-description: Segment customers and spending behavior from the DB_SOURCE.transactions table using transaction amount, category, merchant, and transaction date.
+description: Analyze customer spending behavior using aggregated metrics from DB_SOURCE.transactions. Only aggregated or top-N queries are allowed.
 ---
 
-# Customer Spending Segmentation
+# Customer Spending Segmentation (Aggregated Only)
 
-Use this skill when the user asks for customer behavior analysis, repeat purchase patterns, category preferences, merchant concentration, or spending segmentation based on transaction history.
+Use this skill when the user asks for customer behavior analysis, repeat purchase patterns, category preferences, merchant concentration, or spending segmentation.
 
 ## Table
-
-The main table is:
 
 ```sql
 DB_SOURCE.transactions
@@ -23,84 +21,68 @@ DB_SOURCE.transactions
 - `Category`
 - `MerchantID`
 
-## What this skill is for
+---
 
-This skill supports analysis such as:
+## 🚨 CRITICAL RULES (MANDATORY)
 
-- identifying top-spending customers
-- finding frequent customers
-- measuring average spend per customer
-- identifying each customer's favorite category
-- identifying merchant concentration by customer
-- separating customers into spend tiers
+- NEVER return raw transaction-level data
+- NEVER return all customers without LIMIT
+- ALWAYS aggregate BEFORE returning results
+- ALWAYS include `LIMIT` or filtering
+- Prefer TOP-N queries (e.g., top 20 customers)
+- Default LIMIT is 20 unless specified otherwise
+- If the result could exceed ~100 rows, reduce it
 
-## Important Constraints
+❌ Forbidden:
+```sql
+SELECT * FROM DB_SOURCE.transactions;
+```
 
-Because only one table is shown, do not assume access to:
+❌ Forbidden:
+```sql
+SELECT CustomerID FROM DB_SOURCE.transactions;
+```
 
-- customer profile tables
-- merchant attributes
-- product details
-- fraud labels
-- account status
-- refunds or reversals
+✅ Required pattern:
+```sql
+GROUP BY CustomerID
+LIMIT 20;
+```
 
-All segmentation must be derived only from transaction history in `DB_SOURCE.transactions`.
+---
 
-## Derived Metrics
+## Allowed Analysis Types
 
-### Total customer spend
+- Top customers by spend
+- Customer segmentation (tiers)
+- Category or merchant aggregation
+- Distribution summaries
+- Aggregated KPIs
+
+---
+
+## Core Aggregations
+
+### Total spend per customer
 ```sql
 SUM(Transaction_Amount)
 ```
-grouped by `CustomerID`
 
-### Transaction frequency
+### Transaction count
 ```sql
 COUNT(*)
 ```
-grouped by `CustomerID`
 
-### Average basket size
+### Average transaction
 ```sql
 AVG(Transaction_Amount)
 ```
-grouped by `CustomerID`
 
-### Active period
-Use:
-- `MIN(Date_transaction)` for first transaction
-- `MAX(Date_transaction)` for most recent transaction
+---
 
-### Favorite category
-Rank categories per customer by:
-- transaction count, or
-- total spend
+## Safe Query Patterns
 
-Be explicit about which definition is used.
-
-## Recommended Segmentation Approaches
-
-### Spend tiers
-Create tiers using thresholds or quantiles, for example:
-- low spend
-- medium spend
-- high spend
-
-Only define thresholds if the user requests them or if you clearly state them.
-
-### Frequency tiers
-Group customers by transaction count.
-
-### Category affinity
-Find the category with the highest count or spending per customer.
-
-### Merchant concentration
-Measure whether a customer spends across many merchants or only a few.
-
-## Query Patterns
-
-### Top customers by transaction count
+### Top customers (MANDATORY LIMIT)
 ```sql
 SELECT
     CustomerID,
@@ -109,65 +91,67 @@ SELECT
     AVG(Transaction_Amount) AS avg_transaction_amount
 FROM DB_SOURCE.transactions
 GROUP BY CustomerID
-ORDER BY transaction_count DESC
+ORDER BY total_spent DESC
 LIMIT 20;
 ```
 
-### Customer spend tiers
+---
+
+### Spend distribution (no customer-level output)
 ```sql
 SELECT
-    CustomerID,
-    SUM(Transaction_Amount) AS total_spent,
-    CASE
-        WHEN SUM(Transaction_Amount) < 500 THEN 'low'
-        WHEN SUM(Transaction_Amount) < 2000 THEN 'medium'
-        ELSE 'high'
-    END AS spend_tier
-FROM DB_SOURCE.transactions
-GROUP BY CustomerID
-ORDER BY total_spent DESC;
+    COUNT(*) AS total_transactions,
+    SUM(Transaction_Amount) AS total_volume,
+    AVG(Transaction_Amount) AS avg_transaction,
+    MIN(Transaction_Amount) AS min_transaction,
+    MAX(Transaction_Amount) AS max_transaction
+FROM DB_SOURCE.transactions;
 ```
 
-### Favorite category per customer
+---
+
+### Spend tiers (aggregated)
 ```sql
-WITH category_rank AS (
+SELECT
+    spend_tier,
+    COUNT(*) AS num_customers,
+    AVG(total_spent) AS avg_spend
+FROM (
     SELECT
         CustomerID,
-        Category,
-        COUNT(*) AS category_txn_count,
-        SUM(Transaction_Amount) AS category_spend,
-        ROW_NUMBER() OVER (
-            PARTITION BY CustomerID
-            ORDER BY COUNT(*) DESC, SUM(Transaction_Amount) DESC
-        ) AS rn
+        SUM(Transaction_Amount) AS total_spent,
+        CASE
+            WHEN SUM(Transaction_Amount) < 500 THEN 'low'
+            WHEN SUM(Transaction_Amount) < 2000 THEN 'medium'
+            ELSE 'high'
+        END AS spend_tier
     FROM DB_SOURCE.transactions
-    GROUP BY CustomerID, Category
-)
-SELECT
-    CustomerID,
-    Category AS favorite_category,
-    category_txn_count,
-    category_spend
-FROM category_rank
-WHERE rn = 1;
+    GROUP BY CustomerID
+) t
+GROUP BY spend_tier;
 ```
 
-### Merchant diversity by customer
+---
+
+### Category distribution (aggregated only)
 ```sql
 SELECT
-    CustomerID,
-    COUNT(DISTINCT MerchantID) AS distinct_merchants,
+    Category,
     COUNT(*) AS transaction_count,
     SUM(Transaction_Amount) AS total_spent
 FROM DB_SOURCE.transactions
-GROUP BY CustomerID
-ORDER BY distinct_merchants DESC;
+GROUP BY Category
+ORDER BY total_spent DESC
+LIMIT 20;
 ```
+
+---
 
 ## Response Style
 
-When answering:
-- derive all metrics from the visible transaction table only
-- clearly state whether segmentation is based on spend, count, or recency
-- use window functions when ranking within customer groups
-- avoid unsupported claims about churn, fraud, or customer demographics
+- Always describe results at **aggregated level**
+- Avoid listing all customers
+- Prefer summaries like:
+  - "Top 20 customers represent X% of spend"
+  - "Most transactions occur in category Y"
+- Be concise and analytical

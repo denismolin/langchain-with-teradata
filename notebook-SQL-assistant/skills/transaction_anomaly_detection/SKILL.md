@@ -1,169 +1,173 @@
 ---
 name: transaction_anomaly_detection
-description: Detect unusual transaction patterns and simple fraud-like heuristics using only the DB_SOURCE.transactions table.
+description: Detect unusual transaction patterns using aggregated heuristics only from DB_SOURCE.transactions. Avoid raw transaction outputs.
 ---
 
-# Transaction Anomaly Detection
+# Transaction Anomaly Detection (Aggregated Only)
 
-Use this skill when the user asks for unusual transaction detection, outlier analysis, suspicious merchant patterns, abnormal customer spending, or simple fraud-oriented heuristics based only on the transaction table.
+Use this skill when the user asks for unusual transaction detection, outlier analysis, suspicious merchant patterns, or abnormal customer spending.
 
 ## Table
-
-The main table is:
 
 ```sql
 DB_SOURCE.transactions
 ```
 
-## Available Columns
+## Columns
 
-- `CustomerID`
-- `Transaction_Amount`
-- `Date_transaction`
-- `Category`
-- `MerchantID`
+- CustomerID
+- Transaction_Amount
+- Date_transaction
+- Category
+- MerchantID
 
-## Scope and Limitations
+---
 
-This skill is limited to heuristics that can be derived from a single table.
+## 🚨 CRITICAL RULES (MANDATORY)
 
-Do not assume the existence of:
-- transaction timestamps beyond the date
-- chargeback labels
-- fraud labels
-- merchant geography
-- device identifiers
-- IP addresses
-- customer demographics
-- account status
-- transaction status or reversals
+- NEVER return raw transaction-level rows
+- NEVER expose full transaction lists
+- ALWAYS aggregate results
+- ALWAYS use LIMIT when returning entities
+- Default LIMIT is 20
+- Focus on summaries, not individual transactions
 
-Because of those limits, results should be described as:
-- unusual
-- anomalous
-- high-risk heuristic candidates
-
-Do not claim confirmed fraud.
-
-## Recommended Heuristics
-
-### Large transaction outliers
-Find transactions that are unusually large compared with:
-- all transactions
-- the customer's own history
-- the category distribution
-
-### Customer-level spikes
-Detect customers whose recent transaction amounts are far above their own average.
-
-### Merchant concentration risk
-Identify merchants with unusually high counts of large transactions.
-
-### Category anomalies
-Find transactions that are extreme within a category.
-
-### Sparse but high-value customers
-Find customers with very few transactions but very high total or average amounts.
-
-## Query Patterns
-
-### Global high-value outliers using percentile logic
+❌ Forbidden:
 ```sql
-WITH threshold AS (
-    SELECT PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY Transaction_Amount) AS p99_amount
-    FROM DB_SOURCE.transactions
-)
-SELECT
-    t.CustomerID,
-    t.MerchantID,
-    t.Category,
-    t.Date_transaction,
-    t.Transaction_Amount
-FROM DB_SOURCE.transactions t
-CROSS JOIN threshold th
-WHERE t.Transaction_Amount >= th.p99_amount
-ORDER BY t.Transaction_Amount DESC;
+SELECT * FROM DB_SOURCE.transactions;
 ```
 
-### Transactions far above each customer's average
+❌ Forbidden:
 ```sql
-WITH customer_stats AS (
-    SELECT
-        CustomerID,
-        AVG(Transaction_Amount) AS avg_amount,
-        STDDEV_SAMP(Transaction_Amount) AS std_amount
-    FROM DB_SOURCE.transactions
-    GROUP BY CustomerID
-)
-SELECT
-    t.CustomerID,
-    t.MerchantID,
-    t.Category,
-    t.Date_transaction,
-    t.Transaction_Amount,
-    cs.avg_amount,
-    cs.std_amount
-FROM DB_SOURCE.transactions t
-JOIN customer_stats cs
-    ON t.CustomerID = cs.CustomerID
-WHERE t.Transaction_Amount > cs.avg_amount + 3 * COALESCE(cs.std_amount, 0)
-ORDER BY t.Transaction_Amount DESC;
+SELECT CustomerID, Transaction_Amount FROM DB_SOURCE.transactions;
 ```
 
-### Merchant-level concentration of high-value transactions
+✅ Required:
+```sql
+GROUP BY ...
+LIMIT 20;
+```
+
+---
+
+## Scope & Limitations
+
+- No fraud labels → only heuristics
+- No timestamps → limited temporal precision
+- No external metadata → no demographics or geography
+
+Always describe results as:
+- anomalies
+- unusual patterns
+- high-risk indicators
+
+Never claim confirmed fraud.
+
+---
+
+## Allowed Detection Types
+
+- High-spend customers (aggregated)
+- Customers with abnormal averages
+- Merchant-level anomalies
+- Category-level anomalies
+- Distribution outliers
+
+---
+
+## Core Metrics
+
+- SUM(Transaction_Amount)
+- AVG(Transaction_Amount)
+- COUNT(*)
+- STDDEV_SAMP(Transaction_Amount)
+
+---
+
+## Safe Query Patterns
+
+### High-spend customers (proxy for anomaly)
+```sql
+SELECT
+    CustomerID,
+    COUNT(*) AS transaction_count,
+    SUM(Transaction_Amount) AS total_spent,
+    AVG(Transaction_Amount) AS avg_amount
+FROM DB_SOURCE.transactions
+GROUP BY CustomerID
+ORDER BY total_spent DESC
+LIMIT 20;
+```
+
+---
+
+### Customers with unusually high average spend
+```sql
+SELECT
+    CustomerID,
+    COUNT(*) AS transaction_count,
+    AVG(Transaction_Amount) AS avg_amount
+FROM DB_SOURCE.transactions
+GROUP BY CustomerID
+HAVING AVG(Transaction_Amount) > (
+    SELECT AVG(Transaction_Amount) * 3 FROM DB_SOURCE.transactions
+)
+ORDER BY avg_amount DESC
+LIMIT 20;
+```
+
+---
+
+### Merchant anomaly (high-value concentration)
 ```sql
 SELECT
     MerchantID,
     COUNT(*) AS transaction_count,
     SUM(Transaction_Amount) AS total_amount,
-    AVG(Transaction_Amount) AS avg_amount,
-    SUM(CASE WHEN Transaction_Amount >= 1000 THEN 1 ELSE 0 END) AS high_value_txn_count
+    AVG(Transaction_Amount) AS avg_amount
 FROM DB_SOURCE.transactions
 GROUP BY MerchantID
-ORDER BY high_value_txn_count DESC, total_amount DESC;
+ORDER BY avg_amount DESC
+LIMIT 20;
 ```
 
-### Category-based outliers
+---
+
+### Category anomalies (high average)
 ```sql
-WITH category_stats AS (
-    SELECT
-        Category,
-        AVG(Transaction_Amount) AS avg_amount,
-        STDDEV_SAMP(Transaction_Amount) AS std_amount
-    FROM DB_SOURCE.transactions
-    GROUP BY Category
-)
 SELECT
-    t.CustomerID,
-    t.MerchantID,
-    t.Category,
-    t.Date_transaction,
-    t.Transaction_Amount
-FROM DB_SOURCE.transactions t
-JOIN category_stats cs
-    ON t.Category = cs.Category
-WHERE t.Transaction_Amount > cs.avg_amount + 3 * COALESCE(cs.std_amount, 0)
-ORDER BY t.Category, t.Transaction_Amount DESC;
+    Category,
+    COUNT(*) AS transaction_count,
+    AVG(Transaction_Amount) AS avg_amount,
+    SUM(Transaction_Amount) AS total_amount
+FROM DB_SOURCE.transactions
+GROUP BY Category
+ORDER BY avg_amount DESC
+LIMIT 20;
 ```
 
-### Customers with few transactions but high average spend
+---
+
+### Sparse but high-value customers
 ```sql
 SELECT
     CustomerID,
     COUNT(*) AS transaction_count,
-    SUM(Transaction_Amount) AS total_amount,
-    AVG(Transaction_Amount) AS avg_amount
+    AVG(Transaction_Amount) AS avg_amount,
+    SUM(Transaction_Amount) AS total_amount
 FROM DB_SOURCE.transactions
 GROUP BY CustomerID
 HAVING COUNT(*) <= 3
-ORDER BY avg_amount DESC, total_amount DESC;
+ORDER BY avg_amount DESC
+LIMIT 20;
 ```
+
+---
 
 ## Response Style
 
-When answering:
-- label findings as anomaly detection heuristics, not confirmed fraud
-- explain the baseline used for comparison
-- prefer percentile, z-score, or customer-relative comparisons
-- note when SQL functions may vary by dialect
-- avoid overclaiming due to the limited schema
+- Always describe aggregated anomalies
+- Avoid listing individual transactions
+- Explain the heuristic used (e.g., high average, top spenders)
+- Be cautious: label results as "potential anomalies"
+- Be concise and analytical

@@ -11,7 +11,7 @@ from langgraph.checkpoint.memory import InMemorySaver
 from langchain_openai import ChatOpenAI
 
 
-SKILLS_ROOT = Path(".claude/skills")
+SKILLS_ROOT = Path("./skills")
 
 
 class Skill(TypedDict):
@@ -140,11 +140,7 @@ class SkillMiddleware(AgentMiddleware):
             for skill in skills
         )
 
-    def wrap_model_call(
-        self,
-        request: ModelRequest,
-        handler: Callable[[ModelRequest], ModelResponse],
-    ) -> ModelResponse:
+    def _build_system_message(self, request: ModelRequest) -> SystemMessage:
         skills_prompt = self._build_skills_prompt()
 
         skills_addendum = (
@@ -154,12 +150,41 @@ class SkillMiddleware(AgentMiddleware):
             "Use the `load_skill` tool when you need the full instructions."
         )
 
-        new_content = list(request.system_message.content_blocks) + [
-            {"type": "text", "text": skills_addendum}
-        ]
-        new_system_message = SystemMessage(content=new_content)
-        modified_request = request.override(system_message=new_system_message)
+        original_content = ""
+        if request.system_message is not None:
+            content = request.system_message.content
+            if isinstance(content, str):
+                original_content = content
+            else:
+                parts = []
+                for item in content:
+                    if isinstance(item, dict) and item.get("type") == "text":
+                        parts.append(item.get("text", ""))
+                    elif isinstance(item, str):
+                        parts.append(item)
+                original_content = "\n".join(parts).strip()
+
+        return SystemMessage(content=(original_content + skills_addendum).strip())
+
+    def wrap_model_call(
+        self,
+        request: ModelRequest,
+        handler: Callable[[ModelRequest], ModelResponse],
+    ) -> ModelResponse:
+        modified_request = request.override(
+            system_message=self._build_system_message(request)
+        )
         return handler(modified_request)
+
+    async def awrap_model_call(
+        self,
+        request: ModelRequest,
+        handler,
+    ) -> ModelResponse:
+        modified_request = request.override(
+            system_message=self._build_system_message(request)
+        )
+        return await handler(modified_request)
 
 
 def create_sql_agent(

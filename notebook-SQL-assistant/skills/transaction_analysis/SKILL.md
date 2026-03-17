@@ -1,15 +1,13 @@
 ---
 name: transaction_analysis
-description: Analyze customer transactions by amount, date, category, and merchant using the DB_SOURCE.transactions table.
+description: Analyze transactions using aggregated queries only from DB_SOURCE.transactions. Avoid raw data outputs and always use limits.
 ---
 
-# Transaction Analysis
+# Transaction Analysis (Aggregated Only)
 
-Use this skill when the user asks for SQL queries or analysis involving transaction amounts, transaction dates, customer activity, category spending, or merchant-level transaction summaries.
+Use this skill when the user asks for SQL queries or analysis involving transaction amounts, transaction dates, customer activity, category spending, or merchant-level summaries.
 
 ## Table
-
-The main table is:
 
 ```sql
 DB_SOURCE.transactions
@@ -17,24 +15,44 @@ DB_SOURCE.transactions
 
 ## Columns
 
-### CustomerID
-Identifier of the customer associated with the transaction.
+- CustomerID
+- Transaction_Amount
+- Date_transaction
+- Category
+- MerchantID
 
-### Transaction_Amount
-Numeric amount of the transaction.
+---
 
-### Date_transaction
-Transaction date.
+## 🚨 CRITICAL RULES (MANDATORY)
 
-### Category
-Transaction category such as Cosmetic, Clothing, Restaurant, Market, Travel, or Electronics.
+- NEVER return raw transaction-level data
+- NEVER use SELECT *
+- ALWAYS aggregate results before returning
+- ALWAYS use LIMIT when returning entity-level results (customers, merchants, categories)
+- Default LIMIT is 20 unless specified otherwise
+- If result could exceed ~100 rows → reduce or aggregate further
 
-### MerchantID
-Identifier of the merchant associated with the transaction.
+❌ Forbidden:
+```sql
+SELECT * FROM DB_SOURCE.transactions;
+```
 
-## Assumptions and Scope
+❌ Forbidden:
+```sql
+SELECT CustomerID FROM DB_SOURCE.transactions;
+```
 
-Only use columns that are explicitly present in the table:
+✅ Required pattern:
+```sql
+GROUP BY ...
+LIMIT 20;
+```
+
+---
+
+## Scope & Assumptions
+
+Only use these columns:
 
 - CustomerID
 - Transaction_Amount
@@ -42,59 +60,50 @@ Only use columns that are explicitly present in the table:
 - Category
 - MerchantID
 
-Do not assume the existence of any of the following unless the user explicitly provides them:
-
+Do NOT assume:
 - transaction_id
-- transaction_status
-- currency
-- payment_method
-- city
-- country
-- merchant_name
-- customer demographics
+- status, currency, payment method
+- location or demographics
+- merchant metadata
 
-## Analysis Patterns
+---
 
-### Customer spending
-Use `SUM(Transaction_Amount)` grouped by `CustomerID`.
+## Allowed Analysis Types
 
-### Merchant volume
-Use `COUNT(*)` or `SUM(Transaction_Amount)` grouped by `MerchantID`.
+- Customer-level aggregated spending
+- Category-level summaries
+- Merchant-level summaries
+- Time-based aggregations (daily, monthly, yearly)
+- Distribution metrics
 
-### Category spending
-Use `SUM(Transaction_Amount)` grouped by `Category`.
+---
 
-### Time-based filtering
-Use `Date_transaction` for filtering by day, month, quarter, year, or rolling periods.
+## Core Aggregations
 
-### High-value transactions
-Treat these as user-defined unless the prompt specifies a threshold. If needed, ask for or infer a threshold from the request.
+- Total spend → SUM(Transaction_Amount)
+- Transaction count → COUNT(*)
+- Average transaction → AVG(Transaction_Amount)
+- Min / Max → MIN(), MAX()
 
-## Query Guidelines
+---
 
-- Prefer explicit column selection over `SELECT *` unless the user asks for all fields.
-- Alias aggregates clearly, for example:
-  - `total_spent`
-  - `transaction_count`
-  - `avg_transaction_amount`
-- When ranking, use `ORDER BY` with `DESC`.
-- When returning top results, use `LIMIT`.
-- For monthly summaries, truncate or extract from `Date_transaction` using the SQL dialect appropriate to the environment.
+## Safe Query Patterns
 
-## Example Queries
-
-### Top 10 customers by total spending
+### Top customers by spending
 ```sql
 SELECT
     CustomerID,
-    SUM(Transaction_Amount) AS total_spent
+    SUM(Transaction_Amount) AS total_spent,
+    COUNT(*) AS transaction_count
 FROM DB_SOURCE.transactions
 GROUP BY CustomerID
 ORDER BY total_spent DESC
-LIMIT 10;
+LIMIT 20;
 ```
 
-### Total spending by category
+---
+
+### Category spending summary
 ```sql
 SELECT
     Category,
@@ -102,8 +111,11 @@ SELECT
     COUNT(*) AS transaction_count
 FROM DB_SOURCE.transactions
 GROUP BY Category
-ORDER BY total_spent DESC;
+ORDER BY total_spent DESC
+LIMIT 20;
 ```
+
+---
 
 ### Top merchants by revenue
 ```sql
@@ -117,6 +129,8 @@ ORDER BY total_amount DESC
 LIMIT 20;
 ```
 
+---
+
 ### Monthly transaction summary
 ```sql
 SELECT
@@ -128,10 +142,26 @@ GROUP BY DATE_TRUNC('month', Date_transaction)
 ORDER BY month;
 ```
 
+---
+
+### Global summary (no entity-level output)
+```sql
+SELECT
+    COUNT(*) AS total_transactions,
+    SUM(Transaction_Amount) AS total_volume,
+    AVG(Transaction_Amount) AS avg_transaction,
+    MIN(Transaction_Amount) AS min_transaction,
+    MAX(Transaction_Amount) AS max_transaction
+FROM DB_SOURCE.transactions;
+```
+
+---
+
 ## Response Style
 
-When answering:
-- write SQL that uses only the known columns
-- mention any assumptions
-- prefer robust aggregation and filtering patterns
-- avoid inventing business rules that are not present in the schema
+- Always return aggregated insights
+- Avoid listing raw rows
+- Prefer summaries such as:
+  - "Top 20 customers represent X% of total spend"
+  - "Category X accounts for the largest share"
+- Be concise, analytical, and explicit about assumptions
