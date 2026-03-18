@@ -32,7 +32,7 @@ This part is inspired by the [LangChain SQL assistant with skills example](https
 
 - **MCP (Model Context Protocol)** — the agent connects to the [Teradata MCP Server Community Edition](https://github.com/Teradata/teradata-mcp-server) to discover the schema and run queries, rather than having any hardcoded SQL knowledge.
 - **Skills** — reusable Markdown files that inject domain rules and safe query patterns into the agent at runtime. The agent decides which skill to load based on the user's request.
-- **On-premise LLMs** — the notebooks show how to plug in a locally-hosted model (Mistral via a custom OpenAI-compatible endpoint) instead of relying on a cloud API.
+- **On-premise LLMs** — the notebooks show how to plug in a locally-hosted model instead of relying on a cloud API. The demo uses `mistralai/Ministral-3-14B-Instruct-2512` served with [vLLM](https://github.com/vllm-project/vllm) on two NVIDIA RTX 4070 Ti Super (16 GB VRAM each), exposed via an OpenAI-compatible endpoint.
 
 ### Notebooks
 
