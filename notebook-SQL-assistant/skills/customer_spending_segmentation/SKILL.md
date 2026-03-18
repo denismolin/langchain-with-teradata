@@ -1,103 +1,50 @@
 ---
 name: customer_spending_segmentation
-description: Analyze customer spending behavior using aggregated metrics from DB_SOURCE.transactions. Only aggregated or top-N queries are allowed.
+description: Analyze customer spending behavior using aggregated Teradata SQL from DB_SOURCE.transactions. Only aggregated or top-N queries allowed.
 ---
 
-# Customer Spending Segmentation (Aggregated Only)
+# Customer Spending Segmentation
 
-Use this skill when the user asks for customer behavior analysis, repeat purchase patterns, category preferences, merchant concentration, or spending segmentation.
+Use this skill when the user asks about customer behavior, repeat purchases, category preferences, merchant concentration, or spending tiers.
 
-## Table
+## Table & Columns
 
-```sql
-DB_SOURCE.transactions
-```
+**Table:** `DB_SOURCE.transactions`
 
-## Available Columns
-
-- `CustomerID`
-- `Transaction_Amount`
-- `Date_transaction`
-- `Category`
-- `MerchantID`
-
----
-
-## 🚨 CRITICAL RULES (MANDATORY)
-
-- NEVER return raw transaction-level data
-- NEVER return all customers without LIMIT
-- ALWAYS aggregate BEFORE returning results
-- ALWAYS include `LIMIT` or filtering
-- Prefer TOP-N queries (e.g., top 20 customers)
-- Default LIMIT is 20 unless specified otherwise
-- If the result could exceed ~100 rows, reduce it
-
-❌ Forbidden:
-```sql
-SELECT * FROM DB_SOURCE.transactions;
-```
-
-❌ Forbidden:
-```sql
-SELECT CustomerID FROM DB_SOURCE.transactions;
-```
-
-✅ Required pattern:
-```sql
-GROUP BY CustomerID
-LIMIT 20;
-```
+| Column | Description |
+|---|---|
+| CustomerID | Customer identifier |
+| Transaction_Amount | Transaction value |
+| Date_transaction | Transaction date |
+| Category | Spending category |
+| MerchantID | Merchant identifier |
 
 ---
 
-## Allowed Analysis Types
+## Hard Rules
 
-- Top customers by spend
-- Customer segmentation (tiers)
-- Category or merchant aggregation
-- Distribution summaries
-- Aggregated KPIs
-
----
-
-## Core Aggregations
-
-### Total spend per customer
-```sql
-SUM(Transaction_Amount)
-```
-
-### Transaction count
-```sql
-COUNT(*)
-```
-
-### Average transaction
-```sql
-AVG(Transaction_Amount)
-```
+- **Never** return raw transaction rows or full customer lists
+- **Always** aggregate before returning results
+- **Always** use `TOP N` — default `TOP 20`
+- If a result could exceed ~100 rows, reduce or aggregate further
 
 ---
 
-## Safe Query Patterns
+## Query Patterns (Teradata SQL)
 
-### Top customers (MANDATORY LIMIT)
+### Top customers by spend
 ```sql
-SELECT
+SELECT TOP 20
     CustomerID,
     COUNT(*) AS transaction_count,
     SUM(Transaction_Amount) AS total_spent,
     AVG(Transaction_Amount) AS avg_transaction_amount
 FROM DB_SOURCE.transactions
 GROUP BY CustomerID
-ORDER BY total_spent DESC
-LIMIT 20;
+ORDER BY total_spent DESC;
 ```
 
----
-
-### Spend distribution (no customer-level output)
+### Global spend distribution (no customer-level output)
 ```sql
 SELECT
     COUNT(*) AS total_transactions,
@@ -108,9 +55,7 @@ SELECT
 FROM DB_SOURCE.transactions;
 ```
 
----
-
-### Spend tiers (aggregated)
+### Spend tier distribution
 ```sql
 SELECT
     spend_tier,
@@ -121,7 +66,7 @@ FROM (
         CustomerID,
         SUM(Transaction_Amount) AS total_spent,
         CASE
-            WHEN SUM(Transaction_Amount) < 500 THEN 'low'
+            WHEN SUM(Transaction_Amount) < 500  THEN 'low'
             WHEN SUM(Transaction_Amount) < 2000 THEN 'medium'
             ELSE 'high'
         END AS spend_tier
@@ -131,27 +76,21 @@ FROM (
 GROUP BY spend_tier;
 ```
 
----
-
-### Category distribution (aggregated only)
+### Category distribution
 ```sql
-SELECT
+SELECT TOP 20
     Category,
     COUNT(*) AS transaction_count,
     SUM(Transaction_Amount) AS total_spent
 FROM DB_SOURCE.transactions
 GROUP BY Category
-ORDER BY total_spent DESC
-LIMIT 20;
+ORDER BY total_spent DESC;
 ```
 
 ---
 
 ## Response Style
 
-- Always describe results at **aggregated level**
-- Avoid listing all customers
-- Prefer summaries like:
-  - "Top 20 customers represent X% of spend"
-  - "Most transactions occur in category Y"
+- Summarize at the aggregated level — no raw customer lists
+- Prefer statements like "Top 20 customers represent X% of spend"
 - Be concise and analytical
