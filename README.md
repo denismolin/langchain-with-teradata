@@ -30,7 +30,7 @@ All notebooks use a small set of toy documents on purpose — the focus is on un
 
 This part is inspired by the [LangChain SQL assistant with skills example](https://docs.langchain.com/oss/python/langchain/multi-agent/skills-sql-assistant#view-complete-runnable-script), adapted to use Teradata as the database backend. It shows how to build a LangGraph agent that can query a Teradata database in natural language. Three ideas are demonstrated together:
 
-- **MCP (Model Context Protocol)** — the agent connects to a Teradata MCP server to discover the schema and run queries, rather than having any hardcoded SQL knowledge.
+- **MCP (Model Context Protocol)** — the agent connects to the [Teradata MCP Server Community Edition](https://github.com/Teradata/teradata-mcp-server) to discover the schema and run queries, rather than having any hardcoded SQL knowledge.
 - **Skills** — reusable Markdown files that inject domain rules and safe query patterns into the agent at runtime. The agent decides which skill to load based on the user's request.
 - **On-premise LLMs** — the notebooks show how to plug in a locally-hosted model (Mistral via a custom OpenAI-compatible endpoint) instead of relying on a cloud API.
 
@@ -116,6 +116,8 @@ The agent will pick it up automatically at next startup.
 ## References
 
 - [Teradata Package for LangChain — Function Reference](https://docs.teradata.com/r/Enterprise/Teradata-Package-for-LangChain-Function-Reference)
+- [Teradata MCP Server Community Edition](https://github.com/Teradata/teradata-mcp-server)
+- [LangChain SQL Assistant with Skills example](https://docs.langchain.com/oss/python/langchain/multi-agent/skills-sql-assistant#view-complete-runnable-script)
 - [LangChain documentation](https://python.langchain.com/)
 - [LangGraph documentation](https://langchain-ai.github.io/langgraph/)
 - [Model Context Protocol (MCP)](https://modelcontextprotocol.io/)
