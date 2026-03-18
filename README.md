@@ -28,6 +28,8 @@ All notebooks use a small set of toy documents on purpose — the focus is on un
 
 ## Part 2 — SQL Assistant (`notebook-SQL-assistant/`)
 
+[![SQL Assistant Demo](notebook-SQL-assistant/thumbnail.png)](https://raw.githubusercontent.com/denismolin/langchain-with-teradata/main/notebook-SQL-assistant/SQL%20Assistant%20with%20Teradata%2C%20skills%20and%20MCP.mp4)
+
 This part is inspired by the [LangChain SQL assistant with skills example](https://docs.langchain.com/oss/python/langchain/multi-agent/skills-sql-assistant#view-complete-runnable-script), adapted to use Teradata as the database backend. It shows how to build a LangGraph agent that can query a Teradata database in natural language. Three ideas are demonstrated together:
 
 - **MCP (Model Context Protocol)** — the agent connects to the [Teradata MCP Server Community Edition](https://github.com/Teradata/teradata-mcp-server) to discover the schema and run queries, rather than having any hardcoded SQL knowledge.
